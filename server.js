@@ -8,7 +8,7 @@ app.use(express.json());
 
 // Configuration
 const FRESHCHAT_API_KEY = process.env.FRESHCHAT_API_KEY;
-const FRESHCHAT_API_URL = process.env.FRESHCHAT_API_URL || 'https://edynamicsolutions.myfreshworks.com/v2';
+const FRESHCHAT_API_URL = process.env.FRESHCHAT_API_URL || 'https://empirica-906850564203647665.myfreshworks.com/';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.ASSISTANT_ID;
 const BOT_AGENT_ID = process.env.FRESHCHAT_BOT_AGENT_ID;
