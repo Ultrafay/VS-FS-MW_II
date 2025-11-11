@@ -1,31 +1,17 @@
 {
   "name": "freshchat-openai-integration",
-  "version": "3.0.0",
-  "description": "Freshchat WhatsApp to OpenAI Assistant integration with auto-format detection",
+  "version": "1.0.0",
+  "description": "Freshchat WhatsApp to OpenAI Assistant integration",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": [
-    "freshchat",
-    "openai",
-    "whatsapp",
-    "webhook",
-    "assistant",
-    "chatbot"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.19.2",
     "axios": "^1.7.2",
     "openai": "^4.56.0",
     "dotenv": "^16.4.5"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
