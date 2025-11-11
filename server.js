@@ -12,36 +12,12 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.ASSISTANT_ID;
 const BOT_AGENT_ID = process.env.FRESHCHAT_BOT_AGENT_ID;
 
-// Try multiple possible API URL formats
-const POSSIBLE_API_URLS = [
-  process.env.FRESHCHAT_API_URL,
-  'https://empirica-906850564203647665.myfreshworks.com/v2',
-  'https://empirica-906850564203647665.freshchat.com/v2',
-  'https://api.freshchat.com/v2',
-  'https://empirica-906850564203647665-c95c7c8abb1a17c17625165.freshchat.com/v2',
-  'https://empirica-906850564203647665-c95c7c8abb1a17c17625165.myfreshworks.com/v2'
-].filter(url => url); // Remove null/undefined
-
-console.log('\n' + '='.repeat(70));
-console.log('🔍 FRESHCHAT API DIAGNOSTIC');
-console.log('='.repeat(70));
-console.log('Will test these API URLs:');
-POSSIBLE_API_URLS.forEach((url, i) => console.log(`  ${i + 1}. ${url}`));
-console.log('='.repeat(70) + '\n');
-
-if (!FRESHCHAT_API_KEY || !OPENAI_API_KEY || !ASSISTANT_ID) {
-  console.error('❌ Missing required environment variables!');
-  process.exit(1);
-}
-
 const openai = new OpenAI({ 
-  apiKey: OPENAI_API_KEY,
-  organization: process.env.OPENAI_ORG_ID,
-  project: process.env.OPENAI_PROJECT_ID
+  apiKey: OPENAI_API_KEY
 });
 
 const conversationThreads = new Map();
-let WORKING_API_URL = null; // Store the working URL once found
+let WORKING_API_URL = 'https://api.freshchat.com/v2';
 
 function log(emoji, message, data = null) {
   const timestamp = new Date().toISOString();
@@ -49,132 +25,60 @@ function log(emoji, message, data = null) {
   if (data) console.log(JSON.stringify(data, null, 2));
 }
 
-// Test which API URL works
-async function findWorkingApiUrl() {
-  if (WORKING_API_URL) return WORKING_API_URL;
-
-  console.log('\n🔍 Testing API URLs to find the working one...\n');
-
-  for (const apiUrl of POSSIBLE_API_URLS) {
-    try {
-      console.log(`Testing: ${apiUrl}`);
-      const response = await axios.get(
-        `${apiUrl}/accounts/configuration`,
-        {
-          headers: {
-            'Authorization': `Bearer ${FRESHCHAT_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 5000
-        }
-      );
-      
-      console.log(`✅ SUCCESS! Found working API URL: ${apiUrl}\n`);
-      WORKING_API_URL = apiUrl;
-      return apiUrl;
-      
-    } catch (error) {
-      console.log(`❌ Failed: ${error.message}`);
-      if (error.response?.data) {
-        console.log(`   Error: ${JSON.stringify(error.response.data)}`);
-      }
-    }
-  }
-
-  throw new Error('Could not find working API URL. Please check your credentials.');
-}
-
-// Send message to Freshchat
-async function sendFreshchatMessage(conversationId, message, channelId = null) {
-  const apiUrl = await findWorkingApiUrl();
-  
-  const attempts = [
-    {
-      name: 'With actor_id',
-      payload: BOT_AGENT_ID ? {
-        message_parts: [{ text: { content: message } }],
-        message_type: 'normal',
-        actor_type: 'agent',
-        actor_id: BOT_AGENT_ID
-      } : null
-    },
-    {
-      name: 'Without actor_id',
-      payload: {
-        message_parts: [{ text: { content: message } }],
-        message_type: 'normal',
-        actor_type: 'agent'
-      }
-    },
-    {
-      name: 'With channel_id',
-      payload: channelId ? {
-        message_parts: [{ text: { content: message } }],
-        message_type: 'normal',
-        actor_type: 'agent',
-        channel_id: channelId
-      } : null
-    },
-    {
-      name: 'System actor',
-      payload: {
-        message_parts: [{ text: { content: message } }],
-        message_type: 'normal',
-        actor_type: 'system'
-      }
-    },
-    {
-      name: 'Minimal',
-      payload: {
-        message_parts: [{ text: { content: message } }]
-      }
-    }
-  ].filter(a => a.payload !== null);
-
-  log('📤', `Sending to conversation: ${conversationId}`);
-  log('📝', `Message: ${message.substring(0, 100)}...`);
-
-  for (let i = 0; i < attempts.length; i++) {
-    const attempt = attempts[i];
-    
-    try {
-      log('🔄', `Attempt ${i + 1}/${attempts.length}: ${attempt.name}`);
-      
-      const response = await axios.post(
-        `${apiUrl}/conversations/${conversationId}/messages`,
-        attempt.payload,
-        {
-          headers: {
-            'Authorization': `Bearer ${FRESHCHAT_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
-        }
-      );
-      
-      log('✅', `SUCCESS with ${attempt.name}!`);
-      return response.data;
-      
-    } catch (error) {
-      log('❌', `Failed: ${error.response?.status} - ${error.message}`);
-      
-      if (i === attempts.length - 1) {
-        log('💥', 'All attempts failed:', error.response?.data || error.message);
-        throw error;
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  }
-}
-
-async function assignToHumanAgent(conversationId) {
-  const apiUrl = await findWorkingApiUrl();
-  
+// Send message to Freshchat - SIMPLIFIED VERSION
+async function sendFreshchatMessage(conversationId, message) {
   try {
-    await axios.put(
-      `${apiUrl}/conversations/${conversationId}`,
-      { status: 'assigned' },
+    log('📤', `Sending message to conversation: ${conversationId}`);
+    
+    const payload = {
+      message_parts: [{ text: { content: message } }],
+      message_type: 'normal'
+    };
+
+    // Add actor_id if available
+    if (BOT_AGENT_ID) {
+      payload.actor_type = 'agent';
+      payload.actor_id = BOT_AGENT_ID;
+    }
+
+    const response = await axios.post(
+      `${WORKING_API_URL}/conversations/${conversationId}/messages`,
+      payload,
+      {
+        headers: {
+          'Authorization': `Bearer ${FRESHCHAT_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    log('✅', 'Message sent successfully to Freshchat');
+    return response.data;
+  } catch (error) {
+    log('❌', 'Failed to send message to Freshchat:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    throw error;
+  }
+}
+
+// Assign conversation to bot agent
+async function assignConversationToBot(conversationId) {
+  try {
+    if (!BOT_AGENT_ID) {
+      log('⚠️', 'No BOT_AGENT_ID set, skipping assignment');
+      return;
+    }
+
+    const response = await axios.put(
+      `${WORKING_API_URL}/conversations/${conversationId}`,
+      {
+        assigned_agent_id: BOT_AGENT_ID,
+        status: 'assigned'
+      },
       {
         headers: {
           'Authorization': `Bearer ${FRESHCHAT_API_KEY}`,
@@ -182,11 +86,12 @@ async function assignToHumanAgent(conversationId) {
         }
       }
     );
-    log('✅', `Conversation ${conversationId} escalated`);
-    return true;
+
+    log('✅', `Conversation ${conversationId} assigned to bot`);
+    return response.data;
   } catch (error) {
-    log('❌', 'Error escalating:', error.response?.data || error.message);
-    throw error;
+    log('❌', 'Failed to assign conversation to bot:', error.response?.data || error.message);
+    // Don't throw - this might not be critical
   }
 }
 
@@ -203,58 +108,59 @@ async function getAssistantResponse(userMessage, threadId = null) {
       log('♻️', `Using thread: ${threadId}`);
     }
 
+    // Add user message to thread
     await openai.beta.threads.messages.create(thread.id, {
       role: 'user',
       content: userMessage
     });
 
+    // Run assistant
     const run = await openai.beta.threads.runs.create(thread.id, {
       assistant_id: ASSISTANT_ID
     });
 
     log('⏳', 'Waiting for assistant...');
 
+    // Poll for completion
     let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
     let attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 30;
 
     while (runStatus.status !== 'completed' && attempts < maxAttempts) {
+      if (runStatus.status === 'failed') {
+        throw new Error(`Assistant run failed: ${runStatus.last_error?.message}`);
+      }
       await new Promise(resolve => setTimeout(resolve, 1000));
       runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       attempts++;
-
-      if (runStatus.status === 'failed' || runStatus.status === 'expired') {
-        throw new Error(`Assistant run ${runStatus.status}`);
-      }
     }
 
-    if (attempts >= maxAttempts) {
-      throw new Error('Assistant timeout');
+    if (runStatus.status !== 'completed') {
+      throw new Error(`Assistant timeout - status: ${runStatus.status}`);
     }
 
+    // Get the latest assistant message
     const messages = await openai.beta.threads.messages.list(thread.id);
-    const assistantMessage = messages.data[0].content[0].text.value;
-    log('🤖', `Response: ${assistantMessage.substring(0, 200)}...`);
+    const assistantMessage = messages.data
+      .filter(msg => msg.role === 'assistant')
+      .sort((a, b) => b.created_at - a.created_at)[0];
 
-    const needsEscalation = assistantMessage.includes('ESCALATE_TO_HUMAN');
-    let cleanMessage = assistantMessage;
-    let escalationReason = '';
-    
-    if (needsEscalation) {
-      const match = assistantMessage.match(/ESCALATE_TO_HUMAN:\s*(.+)/);
-      escalationReason = match ? match[1].trim() : 'User request';
-      cleanMessage = assistantMessage.replace(/ESCALATE_TO_HUMAN:.+/g, '').trim();
-      
-      if (!cleanMessage) {
-        cleanMessage = "Let me connect you with one of our team members.";
-      }
+    if (!assistantMessage) {
+      throw new Error('No assistant response found');
     }
+
+    const responseText = assistantMessage.content[0].text.value;
+    log('🤖', `Assistant response: ${responseText.substring(0, 200)}...`);
+
+    // Check for escalation
+    const needsEscalation = responseText.includes('connect you with my manager') || 
+                           responseText.includes('escalate') ||
+                           responseText.toLowerCase().includes('human');
 
     return {
-      response: cleanMessage,
+      response: responseText,
       threadId: thread.id,
-      needsEscalation,
-      escalationReason
+      needsEscalation
     };
 
   } catch (error) {
@@ -263,314 +169,135 @@ async function getAssistantResponse(userMessage, threadId = null) {
   }
 }
 
-async function processMessageAsync(conversationId, messageContent, channelId = null) {
+// CORRECTED WEBHOOK HANDLER
+app.post('/freshchat-webhook', async (req, res) => {
+  log('📥', '═'.repeat(50));
+  log('📥', 'WEBHOOK RECEIVED');
+  log('📥', 'Full webhook body:', req.body);
+  log('📥', '═'.repeat(50));
+
+  // Immediately respond to Freshchat to avoid timeout
+  res.status(200).json({ status: 'received' });
+
   try {
-    log('🔄', '═'.repeat(70));
-    log('🔄', `Processing: ${conversationId}`);
-    log('💬', `Message: "${messageContent}"`);
-    log('🔄', '═'.repeat(70));
+    // Freshchat webhooks can have different structures
+    // Try multiple possible structures
+    let conversationId, messageContent, actorType;
 
+    // Structure 1: Standard Freshchat webhook
+    if (req.body.data?.conversation_id) {
+      conversationId = req.body.data.conversation_id;
+      messageContent = req.body.data.message_parts?.[0]?.text?.content;
+      actorType = req.body.actor?.type; // 'user' or 'agent'
+    }
+    // Structure 2: Alternative format
+    else if (req.body.conversation_id) {
+      conversationId = req.body.conversation_id;
+      messageContent = req.body.message_parts?.[0]?.text?.content;
+      actorType = req.body.actor_type;
+    }
+    // Structure 3: Message create event
+    else if (req.body.action === 'onMessageCreate' && req.body.data) {
+      conversationId = req.body.data.conversationId;
+      messageContent = req.body.data.messageParts?.[0]?.text?.content;
+      actorType = req.body.data.actorType;
+    }
+
+    log('🔍', 'Extracted data:', {
+      conversationId,
+      messageContent,
+      actorType,
+      hasBody: !!req.body
+    });
+
+    // Validate we have required data
+    if (!conversationId || !messageContent) {
+      log('❌', 'Missing conversationId or messageContent');
+      return;
+    }
+
+    // Only process user messages, ignore bot messages
+    if (actorType !== 'user' && actorType !== 'customer') {
+      log('⚠️', `Ignoring non-user message from actorType: ${actorType}`);
+      return;
+    }
+
+    log('💬', `Processing user message: "${messageContent}"`);
+
+    // Assign conversation to bot first
+    await assignConversationToBot(conversationId);
+
+    // Process the message
     let threadId = conversationThreads.get(conversationId);
-
-    const { response, threadId: newThreadId, needsEscalation, escalationReason } = 
+    
+    const { response, threadId: newThreadId, needsEscalation } = 
       await getAssistantResponse(messageContent, threadId);
 
     conversationThreads.set(conversationId, newThreadId);
 
-    log('📤', 'Sending to Freshchat...');
-    await sendFreshchatMessage(conversationId, response, channelId);
+    // Send the response to Freshchat
+    await sendFreshchatMessage(conversationId, response);
 
     if (needsEscalation) {
-      log('🚨', `Escalating: ${escalationReason}`);
-      await assignToHumanAgent(conversationId);
-      await sendFreshchatMessage(
-        conversationId, 
-        'A team member will be with you shortly!',
-        channelId
-      );
+      log('🚨', 'Escalating to human agent');
+      // For escalation, you might want to reassign to a human agent
+      // This would require knowing a human agent ID
     }
 
-    log('✅', '═'.repeat(70));
-    log('✅', `Completed: ${conversationId}`);
-    log('✅', '═'.repeat(70));
+    log('✅', 'Message processing completed successfully');
 
   } catch (error) {
-    log('❌', '═'.repeat(70));
-    log('❌', `Error: ${conversationId}`);
-    log('❌', error.message);
-    log('❌', '═'.repeat(70));
-    
-    try {
-      await sendFreshchatMessage(
-        conversationId,
-        "I'm having trouble. Let me connect you with a human agent.",
-        channelId
-      );
-      await assignToHumanAgent(conversationId);
-    } catch (fallbackError) {
-      log('❌', 'Fallback failed:', fallbackError.message);
-    }
-  }
-}
-
-// Webhook endpoint
-app.post('/freshchat-webhook', async (req, res) => {
-  try {
-    res.status(200).json({ success: true, message: 'Webhook received' });
-    
-    log('📥', '═'.repeat(70));
-    log('📥', 'WEBHOOK RECEIVED');
-    log('📥', '═'.repeat(70));
-    
-    const { actor, action, data } = req.body;
-    
-    log('📋', 'Data:', {
-      actor_type: actor?.actor_type,
-      action: action,
-      conversation_id: data?.message?.conversation_id
-    });
-    
-    if (action === 'message_create' && actor?.actor_type === 'user') {
-      const conversationId = data?.message?.conversation_id;
-      const messageContent = data?.message?.message_parts?.[0]?.text?.content;
-      const channelId = data?.message?.channel_id;
-      
-      if (!conversationId || !messageContent) {
-        log('⚠️', 'Missing required data');
-        return;
-      }
-
-      log('💬', `User message: "${messageContent}"`);
-      
-      processMessageAsync(conversationId, messageContent, channelId)
-        .catch(err => log('❌', 'Async error:', err.message));
-      
-    } else {
-      log('ℹ️', `Ignoring: ${action} from ${actor?.actor_type}`);
-    }
-    
-  } catch (error) {
-    log('❌', 'Webhook error:', error.message);
+    log('💥', 'Webhook processing error:', error.message);
+    log('💥', 'Error stack:', error.stack);
   }
 });
 
-// COMPREHENSIVE DIAGNOSTIC ENDPOINT
-app.get('/diagnose', async (req, res) => {
-  const results = {
-    timestamp: new Date().toISOString(),
-    environment: {},
-    apiUrls: {},
-    openai: {},
-    freshchat: {},
-    recommendations: []
-  };
-
-  // Check environment variables
-  results.environment = {
-    FRESHCHAT_API_KEY: !!FRESHCHAT_API_KEY ? '✅ Set' : '❌ Missing',
-    FRESHCHAT_API_URL: process.env.FRESHCHAT_API_URL || '❌ Not set',
-    OPENAI_API_KEY: !!OPENAI_API_KEY ? '✅ Set' : '❌ Missing',
-    ASSISTANT_ID: ASSISTANT_ID || '❌ Missing',
-    BOT_AGENT_ID: BOT_AGENT_ID || '⚠️ Optional but recommended'
-  };
-
-  // Test all possible API URLs
-  for (const url of POSSIBLE_API_URLS) {
-    try {
-      const response = await axios.get(
-        `${url}/accounts/configuration`,
-        {
-          headers: {
-            'Authorization': `Bearer ${FRESHCHAT_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 5000
-        }
-      );
-      
-      results.apiUrls[url] = {
-        status: '✅ WORKING',
-        statusCode: response.status,
-        accountInfo: response.data
-      };
-      
-      if (!WORKING_API_URL) {
-        WORKING_API_URL = url;
-        results.recommendations.push(`Use this API URL: ${url}`);
-      }
-      
-    } catch (error) {
-      results.apiUrls[url] = {
-        status: '❌ FAILED',
-        error: error.message,
-        statusCode: error.response?.status,
-        details: error.response?.data
-      };
-    }
-  }
-
-  // Test OpenAI
-  try {
-    await openai.models.list();
-    results.openai.status = '✅ Connected';
-  } catch (error) {
-    results.openai.status = '❌ Failed';
-    results.openai.error = error.message;
-    results.recommendations.push('Check your OpenAI API key');
-  }
-
-  // Summary
-  const workingUrls = Object.entries(results.apiUrls)
-    .filter(([_, v]) => v.status === '✅ WORKING')
-    .map(([k, _]) => k);
-
-  if (workingUrls.length === 0) {
-    results.recommendations.push('❌ No working Freshchat API URLs found');
-    results.recommendations.push('Check your FRESHCHAT_API_KEY');
-    results.recommendations.push('Verify your Freshchat account domain');
-  } else {
-    results.workingApiUrl = workingUrls[0];
-    results.recommendations.push(`Set FRESHCHAT_API_URL=${workingUrls[0]}`);
-  }
-
-  res.json(results);
-});
-
-// Test message sending
-app.get('/debug-send', async (req, res) => {
-  const conversationId = req.query.cid;
+// Test endpoint to simulate webhook
+app.post('/test-webhook', async (req, res) => {
+  const { conversationId, message } = req.body;
   
-  if (!conversationId) {
-    return res.json({ 
-      error: 'Missing conversation_id', 
-      usage: '/debug-send?cid=YOUR_CONVERSATION_ID' 
-    });
+  if (!conversationId || !message) {
+    return res.status(400).json({ error: 'Missing conversationId or message' });
   }
 
   try {
-    const apiUrl = await findWorkingApiUrl();
-    const results = [];
+    log('🧪', 'TEST: Simulating webhook');
     
-    const formats = [
-      {
-        name: 'With actor_id',
-        payload: BOT_AGENT_ID ? {
-          message_parts: [{ text: { content: `Test ${Date.now()}` } }],
-          message_type: 'normal',
-          actor_type: 'agent',
-          actor_id: BOT_AGENT_ID
-        } : null
-      },
-      {
-        name: 'Without actor_id',
-        payload: {
-          message_parts: [{ text: { content: `Test ${Date.now()}` } }],
-          message_type: 'normal',
-          actor_type: 'agent'
-        }
-      },
-      {
-        name: 'System actor',
-        payload: {
-          message_parts: [{ text: { content: `Test ${Date.now()}` } }],
-          message_type: 'normal',
-          actor_type: 'system'
-        }
-      }
-    ].filter(f => f.payload);
+    // Assign to bot
+    await assignConversationToBot(conversationId);
     
-    for (const format of formats) {
-      try {
-        const response = await axios.post(
-          `${apiUrl}/conversations/${conversationId}/messages`,
-          format.payload,
-          {
-            headers: {
-              'Authorization': `Bearer ${FRESHCHAT_API_KEY}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        
-        results.push({
-          format: format.name,
-          status: '✅ SUCCESS',
-          statusCode: response.status
-        });
-        
-        // Stop after first success
-        break;
-        
-      } catch (error) {
-        results.push({
-          format: format.name,
-          status: '❌ FAILED',
-          error: error.response?.data || error.message
-        });
-      }
-    }
+    // Get OpenAI response
+    const { response } = await getAssistantResponse(message);
     
-    res.json({
-      conversationId,
-      apiUrl,
-      timestamp: new Date().toISOString(),
-      results
+    // Send to Freshchat
+    await sendFreshchatMessage(conversationId, response);
+    
+    res.json({ 
+      success: true, 
+      conversationId, 
+      response: response.substring(0, 100) + '...' 
     });
     
   } catch (error) {
-    res.json({
-      error: error.message,
-      conversationId
-    });
+    log('❌', 'Test failed:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
+// Health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy',
-    workingApiUrl: WORKING_API_URL,
+    timestamp: new Date().toISOString(),
     activeThreads: conversationThreads.size
-  });
-});
-
-app.get('/', (req, res) => {
-  res.json({
-    name: 'Freshchat-OpenAI Integration (Diagnostic)',
-    version: '4.0.0',
-    endpoints: {
-      diagnose: 'GET /diagnose - Full diagnostic',
-      webhook: 'POST /freshchat-webhook',
-      debug: 'GET /debug-send?cid=CONVERSATION_ID',
-      health: 'GET /health'
-    }
   });
 });
 
 const PORT = process.env.PORT || 3000;
 
-// Find working API URL on startup
-findWorkingApiUrl()
-  .then(url => {
-    console.log(`\n✅ Found working API URL: ${url}\n`);
-    
-    app.listen(PORT, () => {
-      console.log('='.repeat(70));
-      console.log('🚀 Freshchat-OpenAI Integration Started');
-      console.log('='.repeat(70));
-      console.log(`📍 Port: ${PORT}`);
-      console.log(`🔗 Webhook: POST /freshchat-webhook`);
-      console.log(`🔍 Diagnose: GET /diagnose`);
-      console.log(`🐛 Debug: GET /debug-send?cid=CONVERSATION_ID`);
-      console.log('='.repeat(70) + '\n');
-    });
-  })
-  .catch(error => {
-    console.error('\n❌ STARTUP FAILED');
-    console.error(`Could not find working Freshchat API URL`);
-    console.error(`Error: ${error.message}`);
-    console.error('\nPlease check:');
-    console.error('1. Your FRESHCHAT_API_KEY is correct');
-    console.error('2. Your Freshchat account domain');
-    console.error('3. API access is enabled in Freshchat settings\n');
-    process.exit(1);
-  });
+app.listen(PORT, () => {
+  console.log('🚀 Server started on port', PORT);
+  console.log('📍 Webhook URL: POST /freshchat-webhook');
+  console.log('🧪 Test URL: POST /test-webhook');
+  console.log('❤️  Health: GET /health');
+});
