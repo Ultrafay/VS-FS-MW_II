@@ -57,9 +57,10 @@ function stripCitations(text) {
   let cleaned = text;
 
   const inlinePatterns = [
-    /\[\^\d+\^\]/g,          // OpenAI footnote markers like [^1^]
-    /\[\d+\]/g,              // Simple numeric citations like [1]
-    /【\d+(?:†[^】]*)?】/g    // Retrieval style citations e.g. 
+    /\[\^\d+\^\]/g,                  // OpenAI footnote markers like [^1^]
+    /\[\d+\]/g,                      // Simple numeric citations like [1]
+    /【\d+(?::\d+)?(?:†[^】]*)?】/g,   // Retrieval style citations (incl. section ids)
+    /\(Source:[^)]+\)/gi             // Parenthetical source notes
   ];
 
   inlinePatterns.forEach(pattern => {
@@ -68,7 +69,7 @@ function stripCitations(text) {
 
   // Remove footnote sections that may be appended at the end
   cleaned = cleaned.replace(/^\s*\[\^\d+\^\]:.*$/gm, '');
-  cleaned = cleaned.replace(/^\s*【\d+(?:†[^】]*)?】.*$/gm, '');
+  cleaned = cleaned.replace(/^\s*【\d+(?::\d+)?(?:†[^】]*)?】.*$/gm, '');
 
   // Collapse redundant whitespace introduced by removals
   cleaned = cleaned.replace(/[ \t]{2,}/g, ' ');
