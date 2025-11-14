@@ -49,6 +49,67 @@ function log(emoji, message, data = null) {
   if (data) console.log(JSON.stringify(data, null, 2));
 }
 
+function stripCitations(text) {
+  if (!text || typeof text !== 'string') {
+    return text;
+  }
+
+  let cleaned = text;
+
+  const inlinePatterns = [
+    /\[\^\d+\^\]/g,          // OpenAI footnote markers like [^1^]
+    /\[\d+\]/g,              // Simple numeric citations like [1]
+    /【\d+(?:†[^】]*)?】/g    // Retrieval style citations e.g. 
+  ];
+
+  inlinePatterns.forEach(pattern => {
+    cleaned = cleaned.replace(pattern, '');
+  });
+
+  // Remove footnote sections that may be appended at the end
+  cleaned = cleaned.replace(/^\s*\[\^\d+\^\]:.*$/gm, '');
+  cleaned = cleaned.replace(/^\s*【\d+(?:†[^】]*)?】.*$/gm, '');
+
+  // Collapse redundant whitespace introduced by removals
+  cleaned = cleaned.replace(/[ \t]{2,}/g, ' ');
+  cleaned = cleaned.replace(/\s+\n/g, '\n').trim();
+
+  return cleaned;
+}
+
+function formatForWhatsApp(text) {
+  if (!text || typeof text !== 'string') {
+    return text;
+  }
+
+  let formatted = text.trim();
+
+  // Remove markdown emphasis markers that WhatsApp may not render
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '$1');
+  formatted = formatted.replace(/\*(.*?)\*/g, '$1');
+  formatted = formatted.replace(/__(.*?)__/g, '$1');
+  formatted = formatted.replace(/_(.*?)_/g, '$1');
+  formatted = formatted.replace(/`([^`]+)`/g, '$1');
+
+  // Convert headings to uppercase lines for clearer separation
+  formatted = formatted.replace(/^#+\s*(.*)$/gm, (_, title) => title.toUpperCase());
+
+  // Normalize bullet symbols
+  formatted = formatted.replace(/^[\u2022•▪◦]\s*/gm, '- ');
+
+  // Collapse excessive blank lines
+  formatted = formatted.replace(/\n{3,}/g, '\n\n');
+
+  // Trim residual whitespace around lines
+  formatted = formatted
+    .split('\n')
+    .map(line => line.trimEnd())
+    .join('\n')
+    .trim();
+
+  return formatted;
+}
+
 // Check if conversation is assigned to human agent
 async function isConversationWithHuman(conversationId) {
   try {
@@ -314,7 +375,8 @@ async function processMessage(conversationId, messageContent) {
     log('💾', `Saved thread ${newThreadId} for conversation ${conversationId}`);
 
     // Send response to Freshchat
-    await sendFreshchatMessage(conversationId, response);
+    const cleanedResponse = formatForWhatsApp(stripCitations(response));
+    await sendFreshchatMessage(conversationId, cleanedResponse);
 
     // Handle escalation if needed
     if (needsEscalation) {
@@ -447,7 +509,8 @@ app.post('/test-message', async (req, res) => {
     conversationThreads.set(conversation_id, newThreadId);
     
     // Send to Freshchat
-    await sendFreshchatMessage(conversation_id, response);
+    const cleanedResponse = formatForWhatsApp(stripCitations(response));
+    await sendFreshchatMessage(conversation_id, cleanedResponse);
     
     // Handle escalation
     if (needsEscalation) {
