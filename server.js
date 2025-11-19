@@ -523,7 +523,7 @@ app.post('/freshchat-webhook', async (req, res) => {
           // Check for resolution keywords
           const resolutionKeywords = [
             'it seems like you are unavailable at the moment. I am closing the chat for now',
-    
+    'Looks like you’re away at the moment, so I’ll close this chat for now. You can reopen it anytime to continue with assistance.',
             'back to bot',
             'return to bot',
             'handing back',
