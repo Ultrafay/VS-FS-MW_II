@@ -522,19 +522,11 @@ app.post('/freshchat-webhook', async (req, res) => {
         if (escalatedConversations.has(conversationId)) {
           // Check for resolution keywords
           const resolutionKeywords = [
-            'resolved',
-            'resolved!',
-            'handled',
-            'done',
-            'completed',
-            'sorted',
-            'fixed',
-            'all set',
-            'taken care of',
+            'it seems like you are unavailable at the moment. I am closing the chat for now',
+    
             'back to bot',
             'return to bot',
             'handing back',
-            'transferring back'
           ];
           
           const messageLower = messageContent.toLowerCase();
